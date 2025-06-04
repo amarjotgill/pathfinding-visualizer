@@ -1,7 +1,8 @@
 import React, {Component} from 'react';
 import Node from './Node/Node';
-import {dijkstra, getNodesInShortestPathOrder} from '/Users/amarjotgill/Documents/pathfinding_visualizer/pathfinding-visualizer/src/algorithms/dijkstra.js';
-import {depthFirst} from '/Users/amarjotgill/Documents/pathfinding_visualizer/pathfinding-visualizer/src/algorithms/dfs.js';
+import {dijkstra, getNodesInShortestPathOrder} from '../algorithms/dijkstra';
+import {depthFirst} from '../algorithms/dfs';
+import {astar, getNodesInShortestPathOrderAstar} from '../algorithms/astar';
 
 import './PathfindingVisualizer.css';
 
@@ -75,56 +76,69 @@ export default class PathfindingVisualizer extends Component {
   }
 
   visualizeDijkstra() {
-    const {grid} = this.state;
-    const startNode = this.state.grid[START_NODE_ROW][START_NODE_COL];
-    const finishNode = this.state.grid[FINISH_NODE_ROW][FINISH_NODE_COL];
+    const grid = resetNodeProperties(this.state.grid); // Reset node states
+    const startNode = grid[START_NODE_ROW][START_NODE_COL];
+    const finishNode = grid[FINISH_NODE_ROW][FINISH_NODE_COL];
     let visitedNodesInOrder = dijkstra(grid, startNode, finishNode);
-    this.setState({visitedNodes: visitedNodesInOrder});
     let nodesInShortestPathOrder = getNodesInShortestPathOrder(finishNode);
-    this.setState({shortestPath: nodesInShortestPathOrder});
+    this.setState({visitedNodes: visitedNodesInOrder, shortestPath: nodesInShortestPathOrder}); // Keep track for clearing
     this.animateAlgorithm(visitedNodesInOrder, nodesInShortestPathOrder);
   }
 
+  visualizeAstar() {
+    const grid = resetNodeProperties(this.state.grid); // Reset node states before running
+    const startNode = grid[this.state.startRow][this.state.startCol];
+    const finishNode = grid[this.state.finishRow][this.state.finishCol];
+    const { visitedNodes, shortestPath } = astar(grid, startNode, finishNode);
+    this.setState({visitedNodes: visitedNodes, shortestPath: shortestPath}); // Keep track for clearing
+    this.animateAlgorithm(visitedNodes, shortestPath);
+  }
 
   visualizeDfs(){
-    let {grid} = this.state;
-    const startNode = grid[START_NODE_ROW][START_NODE_COL];
-    const finishNode = grid[FINISH_NODE_ROW][FINISH_NODE_COL];
-    let dfsNodes = depthFirst(grid,startNode,finishNode,START_NODE_ROW,START_NODE_COL);
-    this.setState({visitedNodes: dfsNodes});
-    this.animateAlgorithm(dfsNodes, []);
+    const grid = resetNodeProperties(this.state.grid); // Reset node states
+    const startNode = grid[this.state.startRow][this.state.startCol];
+    const finishNode = grid[this.state.finishRow][this.state.finishCol];
+    // DFS in the original code doesn't seem to use getNodesInShortestPathOrder, adjust if needed
+    let dfsVisitedNodes = depthFirst(grid, startNode, finishNode, this.state.startRow, this.state.startCol);
+    this.setState({visitedNodes: dfsVisitedNodes, shortestPath: [] }); // Keep track for clearing
+    this.animateAlgorithm(dfsVisitedNodes, []);
   }
 
-  clearBoard(){
-      for (let i = 0; i <= this.state.visitedNodes.length; i++) {
-        const node = this.state.visitedNodes[i];
-        if(node === undefined){
-            return;
-        }else if(node.isStart){
-          document.getElementById(`node-${node.row}-${node.col}`).className =
-          'node node-start';
-        }else if(node.isFinish){
-          document.getElementById(`node-${node.row}-${node.col}`).className =
-          'node node-finish';
-        }else{
-          document.getElementById(`node-${node.row}-${node.col}`).className =
-          'node node-remove';
+  clearBoard() {
+    const newGrid = this.state.grid.map(row =>
+      row.map(node => {
+        // Retain wall status, start/finish status
+        const isStart = node.row === this.state.startRow && node.col === this.state.startCol;
+        const isFinish = node.row === this.state.finishRow && node.col === this.state.finishCol;
+
+        // Reset visual state by changing class name
+        if (isStart) {
+          document.getElementById(`node-${node.row}-${node.col}`).className = 'node node-start';
+        } else if (isFinish) {
+          document.getElementById(`node-${node.row}-${node.col}`).className = 'node node-finish';
+        } else if (node.isWall) { // Keep walls visually
+           document.getElementById(`node-${node.row}-${node.col}`).className = 'node node-wall';
         }
-    }
+         else {
+          document.getElementById(`node-${node.row}-${node.col}`).className = 'node';
+        }
+
+        // Return a new node object with properties reset, keeping essential static ones
+        return {
+          ...createNode(node.col, node.row), // Gets initial f,g,h, distance, etc.
+          isWall: node.isWall, // Preserve wall state
+          // isStart and isFinish will be correctly set by createNode based on START_NODE_ROW/COL
+        };
+      })
+    );
+    this.setState({ grid: newGrid, visitedNodes: [], shortestPath: [] });
   }
 
-  unVisitNodes(){
-    for(let i = 0; i<= this.state.visitedNodes.length; i++){
-      const current = this.state.visitedNodes[i];
-      if (current === undefined){
-        return;
-      }
-      const UnVisitGrid = getNewGridWithNoVisit(this.state.grid,current.row,current.col);
-      this.setState({grid: UnVisitGrid});
-    }
-    this.setState({visitedNodes: []});
-  }
-  
+  // unVisitNodes is effectively replaced by clearBoard / resetNodeProperties logic
+  // Keeping it if other functionalities depend on it, but for algorithm runs, resetNodeProperties is better.
+  // For now, let's assume clearBoard handles the primary reset.
+  // If fine-grained unVisit (only visual) is needed, it can be kept or refactored.
+
   render() {
     const {grid, mouseIsPressed} = this.state;
     return (
@@ -133,13 +147,13 @@ export default class PathfindingVisualizer extends Component {
               <button onClick={() => this.visualizeDijkstra()}>
                   Visualize Dijkstra's Algorithm
               </button>
+              <button onClick={() => this.visualizeAstar()}>
+                  Visualize A* Algorithm
+              </button>
               <button onClick={() => this.visualizeDfs()}>
                   Visualize Depth's First Search
               </button>
-              <button onClick={() => {
-                this.clearBoard()
-                this.unVisitNodes()
-                      }}>
+              <button onClick={() => this.clearBoard()}>
                     Clear Board
               </button>
             </div>
@@ -188,6 +202,27 @@ const getInitialGrid = () => {
   return grid;
 };
 
+// Helper function to reset relevant node properties before an algorithm run
+const resetNodeProperties = (grid) => {
+  const newGrid = grid.slice();
+  for (let row = 0; row < newGrid.length; row++) {
+    for (let col = 0; col < newGrid[0].length; col++) {
+      const node = newGrid[row][col];
+      const newNode = {
+        ...node,
+        distance: Infinity,
+        isVisited: false,
+        previousNode: null,
+        f: Infinity,
+        g: Infinity,
+        h: 0, // h might be recalculated by heuristic, but good to reset
+      };
+      newGrid[row][col] = newNode;
+    }
+  }
+  return newGrid;
+};
+
 const createNode = (col, row) => {
   return {
     col: col,
@@ -198,6 +233,9 @@ const createNode = (col, row) => {
     isVisited: false,
     isWall: false,
     previousNode: null,
+    f: Infinity,
+    g: Infinity,
+    h: 0,
   };
 };
 
@@ -212,12 +250,15 @@ const getNewGridWithWallToggled = (grid, row, col) => {
   return newGrid;
 };
 
+// getNewGridWithNoVisit might be redundant if clearBoard and resetNodeProperties handle things well.
+// If it was used for a specific UI purpose of "unvisiting" without a full clear, it might need review.
+// For now, assuming its role is covered.
 const getNewGridWithNoVisit = (grid,row,col) =>{
   const newGrid = grid.slice();
   const node = newGrid[row][col];
   const newNode = {
     ...node,
-    isVisited: false,
+    isVisited: false, // Only resets isVisited, other algo properties might persist
   };
   newGrid[row][col] = newNode;
   return newGrid;
